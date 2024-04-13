@@ -25,8 +25,8 @@ type TTLTargetRef struct {
 
 // TTLSpec is the spec for a TTL resource
 type TTLSpec struct {
-	TTLTargetRef string `json:"ttlTargetRef"`
-	After        string `json:"after"`
+	TTLTargetRef TTLTargetRef `json:"ttlTargetRef"`
+	After        string       `json:"after"`
 }
 
 // TTLStatus is the status for a TTL resource

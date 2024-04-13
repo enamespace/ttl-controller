@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - '*'
+  pull_request:
+    types: [opened, reopened]
+
+
+jobs:
+  ci:
+    strategy:
+      matrix: 
+        os: [ubuntu-latest] 
+        go: [1.22.0]
+    
+    runs-on: ${{ matrix.os }}
+    
+    name: test on ${{ matrix.os }}
+    
+    steps:
+      - name: Check out code directory
+        uses: actions/checkout@v2
+      
+      # - name: Generate all necessary files
+      #   run: |
+      #     make gen
+
+      # - name: Check syntax and styling of sources
+      #   run: |
+      #     make lint
+
+      # - name: Run unit test and get test coverage
+      #   run: |
+      #     make cover
+
+      - name: Build source code for host platform
+        run: |
+          make build

@@ -1,0 +1,11 @@
+apiVersion: ttlcontroller.io/v1alpha1
+kind: TTL
+metadata:
+  name: example-ttl
+spec:
+   ttlTargetRef: 
+      apiVersion: v1
+      kind: Deployment
+      name: wj
+   after: 16s
+    
