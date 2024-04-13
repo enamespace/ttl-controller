@@ -1,4 +1,4 @@
-.PHONY: output build clean all
+.PHONY: all generate deps output build clean 
 
 
 COMMON_SELF_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
@@ -9,6 +9,9 @@ OUTPUT_DIR := ${ROOT_DIR}/_output
 
 all: build
 
+generate: deps
+	${ROOT_DIR}/hack/update-codegen.sh
+
 deps:
 	go mod tidy
 	go mod vendor
@@ -16,7 +19,7 @@ deps:
 output:
 	mkdir -p ${OUTPUT_DIR}
 
-build: output deps
+build: output generate
 	go build -o ${OUTPUT_DIR}/bin/ttl-controller cmd/ttl-controller/main.go
 
 clean:
