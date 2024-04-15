@@ -8,6 +8,8 @@ import (
 	generatedclientset "github.com/enamespace/ttl-controller/pkg/generated/clientset/versioned"
 	generatedinformer "github.com/enamespace/ttl-controller/pkg/generated/informers/externalversions"
 	"github.com/enamespace/ttl-controller/pkg/signals"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 )
@@ -36,10 +38,22 @@ func main() {
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
+	kubernetesClient, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		logger.Error(err, "Error building kubernetes client")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+	}
+
+	dynamicClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		logger.Error(err, "Error building kubernetes dynamic client")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+	}
+
 	ttlInformerFactory := generatedinformer.NewSharedInformerFactory(ttlclientset, time.Second*30)
 
 	ttlinformer := ttlInformerFactory.Ttlcontroller().V1alpha1()
-	controller := ttlcontroller.New(ctx, ttlclientset, ttlinformer.TTLs())
+	controller := ttlcontroller.New(ctx, ttlclientset, ttlinformer.TTLs(), kubernetesClient, dynamicClient)
 
 	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(ctx.done())
 	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.

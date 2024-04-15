@@ -4,8 +4,8 @@ metadata:
   name: example-ttl
 spec:
    ttlTargetRef: 
-      apiVersion: v1
+      apiVersion: apps/v1
       kind: Deployment
-      name: wj
+      name: nginx-deployment
    after: 16s
     
