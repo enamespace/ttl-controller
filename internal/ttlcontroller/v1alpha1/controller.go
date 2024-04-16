@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/enamespace/ttl-controller/pkg/apis/ttlcontroller/v1alpha1"
 	ttlcontroller "github.com/enamespace/ttl-controller/pkg/generated/clientset/versioned"
 	ttlinformer "github.com/enamespace/ttl-controller/pkg/generated/informers/externalversions/ttlcontroller/v1alpha1"
 	ttllister "github.com/enamespace/ttl-controller/pkg/generated/listers/ttlcontroller/v1alpha1"
 	"golang.org/x/time/rate"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -19,10 +21,12 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/klog/v2"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	workqueue "k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2"
+)
+
+const (
+	TTLDone = "0s"
 )
 
 type Controller struct {
@@ -105,6 +109,12 @@ func (c *Controller) runWorker(ctx context.Context) {
 	}
 }
 
+func (c *Controller) updateTTLStatus(obj *v1alpha1.TTL, remainingDuration string) {
+	ttlCopy := obj.DeepCopy()
+	ttlCopy.Status.Remaining = remainingDuration
+	c.ttlclientset.TtlcontrollerV1alpha1().TTLs(ttlCopy.Namespace).UpdateStatus(context.TODO(), ttlCopy, metav1.UpdateOptions{})
+}
+
 func (c *Controller) syncHandler(ctx context.Context, key string) error {
 	logger := klog.LoggerWithValues(klog.FromContext(ctx), "resourceName", key)
 
@@ -122,6 +132,11 @@ func (c *Controller) syncHandler(ctx context.Context, key string) error {
 		}
 
 		return err
+	}
+
+	if ttlObj.Status.Remaining == TTLDone {
+		logger.Info("TTL object has completed", "key", key)
+		return nil
 	}
 
 	u := &unstructured.Unstructured{}
@@ -146,7 +161,7 @@ func (c *Controller) syncHandler(ctx context.Context, key string) error {
 	}
 
 	// Test if found
-	_, err = dClient.Get(context.TODO(), tgtName, metav1.GetOptions{})
+	tgtResource, err := dClient.Get(context.TODO(), tgtName, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			utilruntime.HandleError(fmt.Errorf("tgt resource named %s no longer exist", tgtName))
@@ -156,9 +171,29 @@ func (c *Controller) syncHandler(ctx context.Context, key string) error {
 		return err
 	}
 
-	logger.Info("Found dynamic result, Delete it")
+	ttlAfter, err := time.ParseDuration(ttlObj.Spec.After)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("tgt resource named %s failed to parse duration for %s ", tgtName, ttlObj.Spec.After))
+		return nil
+	}
 
-	err = dClient.Delete(context.TODO(), tgtName, metav1.DeleteOptions{})
+	createTime, err := GetObjectCreateTime(tgtResource)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("tgt resource %s get create time failed", tgtName))
+		return nil
+	}
+
+	logger.Info("Found dynamic result", "key", key, "createTime", createTime, "ttlAfter", ttlAfter)
+	remainingDuration := ttlAfter.Seconds() - time.Since(createTime).Seconds()
+	// Refactor: self loop update
+	if remainingDuration < 0 {
+		logger.Info("TTL has been reached, delete target resource", "key", key)
+		err = dClient.Delete(context.TODO(), tgtName, metav1.DeleteOptions{})
+		c.updateTTLStatus(ttlObj, TTLDone)
+	} else {
+		c.updateTTLStatus(ttlObj, fmt.Sprintf("%f", remainingDuration))
+		logger.Info("TTL has not been reached", "key", key)
+	}
 
 	return err
 }

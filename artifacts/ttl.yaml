@@ -7,5 +7,5 @@ spec:
       apiVersion: apps/v1
       kind: Deployment
       name: nginx-deployment
-   after: 16s
+   after: 2m
     
